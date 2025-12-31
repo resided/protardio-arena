@@ -503,7 +503,7 @@
             <div class="stats-bar">
                 <div class="stat">
                     <div class="stat-value" id="bladeBalance">0</div>
-                    <div class="stat-label">$BLADE Balance</div>
+                    <div class="stat-label">$TARB Balance</div>
                 </div>
                 <div class="stat">
                     <div class="stat-value" id="totalBattles">0</div>
@@ -519,7 +519,7 @@
                 </div>
                 <div class="stat">
                     <div class="stat-value" id="yourEarnings">0</div>
-                    <div class="stat-label">$BLADE Won</div>
+                    <div class="stat-label">$TARB Won</div>
                 </div>
             </div>
 
@@ -532,7 +532,7 @@
                         <option value="">Loading your Protardios...</option>
                     </select>
                     <div id="selectedPreview" style="text-align: center; margin: 10px 0;"></div>
-                    <label style="color: #888; font-size: 0.9rem;">Stake Amount ($BLADE)</label>
+                    <label style="color: #888; font-size: 0.9rem;">Stake Amount ($TARB)</label>
                     <input type="number" id="stakeAmount" placeholder="1000000" value="1000000" step="1000" min="1">
                     <button class="rip-btn" onclick="createBattle()">LET IT RIP!</button>
                 </div>
@@ -558,8 +558,8 @@
 
     <script>
         // Contract config
-        const CONTRACT_ADDRESS = "0x35C2eA62095845AeC2fdC62e5dcF84264978C91E";
-        const BLADE_TOKEN = "0xDC9a64F4511ebe6F813BFDB68b34e6698a1C4b07";
+        const CONTRACT_ADDRESS = "0xa223B6b79211167008008a2A3b48b28948C5a088";
+        const TARB_TOKEN = "0xD63231cEBA61780703da36a2F47FfDD08da05B07";
         const ARBITRUM_CHAIN_ID = 42161;
         const IPFS_GATEWAY = "https://ipfs.io/ipfs/";
         const PROTARDIO_IMAGE_BASE = "bafybeiefdh5ryzudhw2y2qvhqbigxigmx4kqkrabqqlnsv3twiz6mphida";
@@ -575,7 +575,7 @@
             "event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)"
         ];
 
-        const BLADE_ABI = [
+        const TARB_ABI = [
             "function balanceOf(address) view returns (uint256)",
             "function allowance(address owner, address spender) view returns (uint256)",
             "function approve(address spender, uint256 amount) returns (bool)"
@@ -595,7 +595,7 @@
 
         let provider, signer, contract, userAddress;
         let baseProvider, nftContract;
-        let bladeContract;
+        let tarbContract;
         let userProtardios = [];
 
         // Get Protardio image URL
@@ -718,7 +718,7 @@
                 }
 
                 contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, signer);
-                bladeContract = new ethers.Contract(BLADE_TOKEN, BLADE_ABI, signer);
+                tarbContract = new ethers.Contract(TARB_TOKEN, TARB_ABI, signer);
 
                 document.getElementById('connectSection').classList.add('hidden');
                 document.getElementById('walletSection').classList.remove('hidden');
@@ -751,25 +751,25 @@
 
         async function loadStats() {
             try {
-                const [totalBattles, stats, bladeBalance] = await Promise.all([
+                const [totalBattles, stats, tarbBalance] = await Promise.all([
                     contract.totalBattles(),
                     contract.getStats(userAddress),
-                    bladeContract.balanceOf(userAddress)
+                    tarbContract.balanceOf(userAddress)
                 ]);
 
                 document.getElementById('totalBattles').textContent = totalBattles.toString();
                 document.getElementById('yourWins').textContent = stats.wins.toString();
                 document.getElementById('yourLosses').textContent = stats.losses.toString();
                 document.getElementById('yourEarnings').textContent =
-                    formatBlade(stats.earnings);
+                    formatTarb(stats.earnings);
                 document.getElementById('bladeBalance').textContent =
-                    formatBlade(bladeBalance);
+                    formatTarb(tarbBalance);
             } catch (e) {
                 console.error('Stats error:', e);
             }
         }
 
-        function formatBlade(amount) {
+        function formatTarb(amount) {
             const num = parseFloat(ethers.formatEther(amount));
             if (num >= 1000000) return (num / 1000000).toFixed(2) + 'M';
             if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
@@ -777,9 +777,9 @@
         }
 
         async function checkAndApprove(amount) {
-            const allowance = await bladeContract.allowance(userAddress, CONTRACT_ADDRESS);
+            const allowance = await tarbContract.allowance(userAddress, CONTRACT_ADDRESS);
             if (allowance < amount) {
-                const tx = await bladeContract.approve(CONTRACT_ADDRESS, ethers.MaxUint256);
+                const tx = await tarbContract.approve(CONTRACT_ADDRESS, ethers.MaxUint256);
                 await tx.wait();
                 return true;
             }
@@ -808,7 +808,7 @@
                                 <div style="color: #0ff;">Protardio #${battle.p1TokenId}</div>
                                 <div style="font-size: 0.8rem; color: #888;">${battle.player1.slice(0,6)}...${battle.player1.slice(-4)}</div>
                             </div>
-                            <div class="battle-stake">${formatBlade(battle.stake)} $BLADE</div>
+                            <div class="battle-stake">${formatTarb(battle.stake)} $TARB</div>
                             ${isYours ?
                                 '<span style="color: #888;">Your Battle</span>' :
                                 `<button class="join-btn" onclick="joinBattle(${id}, '${battle.stake}', ${battle.p1TokenId})">FIGHT!</button>`
@@ -957,7 +957,7 @@
             if (won) {
                 resultText.textContent = 'VICTORY!';
                 resultText.className = 'result-text win';
-                prizeText.textContent = `You won ${formatBlade(ethers.parseEther(prize))} $BLADE!`;
+                prizeText.textContent = `You won ${formatTarb(ethers.parseEther(prize))} $TARB!`;
             } else {
                 resultText.textContent = 'DEFEAT!';
                 resultText.className = 'result-text lose';
