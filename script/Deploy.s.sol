@@ -14,9 +14,8 @@ contract DeployScript is Script {
 
         console.log("ProtardioArena deployed to:", address(arena));
         console.log("Owner:", arena.owner());
-        console.log("Protocol Fee:", arena.protocolFee(), "bps");
+        console.log("Fee:", arena.fee(), "bps");
         console.log("Min Stake:", arena.minStake());
-        console.log("Max Stake:", arena.maxStake());
 
         vm.stopBroadcast();
     }
