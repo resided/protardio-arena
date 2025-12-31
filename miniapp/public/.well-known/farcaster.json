@@ -1,0 +1,18 @@
+{
+  "accountAssociation": {
+    "header": "eyJmaWQiOjEyMzQ1LCJ0eXBlIjoiY3VzdG9keSIsImtleSI6IjB4MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMCJ9",
+    "payload": "eyJkb21haW4iOiJwcm90YXJkaW8tYXJlbmEudmVyY2VsLmFwcCJ9",
+    "signature": "placeholder"
+  },
+  "frame": {
+    "version": "1",
+    "name": "PROTARDIO ARENA",
+    "iconUrl": "https://ipfs.io/ipfs/bafybeiefdh5ryzudhw2y2qvhqbigxigmx4kqkrabqqlnsv3twiz6mphida/1.png",
+    "homeUrl": "https://protardio-arena.vercel.app",
+    "imageUrl": "https://ipfs.io/ipfs/bafybeiefdh5ryzudhw2y2qvhqbigxigmx4kqkrabqqlnsv3twiz6mphida/1.png",
+    "buttonTitle": "LET IT RIP!",
+    "splashImageUrl": "https://ipfs.io/ipfs/bafybeiefdh5ryzudhw2y2qvhqbigxigmx4kqkrabqqlnsv3twiz6mphida/1.png",
+    "splashBackgroundColor": "#1a0a2e",
+    "webhookUrl": ""
+  }
+}
