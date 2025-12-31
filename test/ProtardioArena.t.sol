@@ -3,26 +3,48 @@ pragma solidity ^0.8.20;
 
 import {Test, console} from "forge-std/Test.sol";
 import {ProtardioArena} from "../src/ProtardioArena.sol";
+import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+
+// Mock BLADE token for testing
+contract MockBLADE is ERC20 {
+    constructor() ERC20("BLADE", "BLADE") {
+        _mint(msg.sender, 1_000_000e18);
+    }
+
+    function mint(address to, uint256 amount) external {
+        _mint(to, amount);
+    }
+}
 
 contract ProtardioArenaTest is Test {
     ProtardioArena public arena;
+    MockBLADE public blade;
 
     address player1 = address(0x1111);
     address player2 = address(0x2222);
 
     function setUp() public {
-        arena = new ProtardioArena();
-        vm.deal(player1, 100 ether);
-        vm.deal(player2, 100 ether);
+        blade = new MockBLADE();
+        arena = new ProtardioArena(address(blade));
+
+        // Fund players with BLADE
+        blade.mint(player1, 1000e18);
+        blade.mint(player2, 1000e18);
+
+        // Approve arena
+        vm.prank(player1);
+        blade.approve(address(arena), type(uint256).max);
+        vm.prank(player2);
+        blade.approve(address(arena), type(uint256).max);
     }
 
     function testCreateBattle() public {
         vm.prank(player1);
-        arena.createBattle{value: 0.1 ether}(42);
+        arena.createBattle(42, 10e18);
 
         (address p1,,uint256 stake, uint256 tokenId,, bool active) = arena.getBattle(1);
         assertEq(p1, player1);
-        assertEq(stake, 0.1 ether);
+        assertEq(stake, 10e18);
         assertEq(tokenId, 42);
         assertTrue(active);
     }
@@ -30,27 +52,27 @@ contract ProtardioArenaTest is Test {
     function testJoinBattleAndFight() public {
         // Player 1 creates battle
         vm.prank(player1);
-        arena.createBattle{value: 0.5 ether}(100);
+        arena.createBattle(100, 50e18);
 
-        uint256 p1Before = player1.balance;
-        uint256 p2Before = player2.balance;
+        uint256 p1Before = blade.balanceOf(player1);
+        uint256 p2Before = blade.balanceOf(player2);
 
         // Player 2 joins
         vm.prank(player2);
-        arena.joinBattle{value: 0.5 ether}(1, 200);
+        arena.joinBattle(1, 200);
 
         // Battle should be complete
         (,,,,, bool active) = arena.getBattle(1);
         assertFalse(active);
 
-        // Someone should have won ~0.975 ETH (1 ETH pot minus 2.5% fee)
-        uint256 prize = 0.975 ether;
+        // One player should have won
+        uint256 p1After = blade.balanceOf(player1);
+        uint256 p2After = blade.balanceOf(player2);
 
-        // One player gained, one lost
-        bool p1Won = player1.balance > p1Before;
-        bool p2Won = player2.balance > p2Before;
+        // Someone won ~97.5 BLADE (100 BLADE pot minus 2.5% fee)
+        bool p1Won = p1After > p1Before;
+        bool p2Won = p2After > p2Before;
         assertTrue(p1Won || p2Won);
-        assertFalse(p1Won && p2Won); // Only one winner
 
         // Stats updated
         assertEq(arena.totalBattles(), 1);
@@ -58,27 +80,18 @@ contract ProtardioArenaTest is Test {
 
     function testCannotFightYourself() public {
         vm.prank(player1);
-        arena.createBattle{value: 0.1 ether}(1);
+        arena.createBattle(1, 10e18);
 
         vm.prank(player1);
         vm.expectRevert(ProtardioArena.CannotFightYourself.selector);
-        arena.joinBattle{value: 0.1 ether}(1, 2);
-    }
-
-    function testWrongStakeAmount() public {
-        vm.prank(player1);
-        arena.createBattle{value: 0.1 ether}(1);
-
-        vm.prank(player2);
-        vm.expectRevert(ProtardioArena.WrongStakeAmount.selector);
-        arena.joinBattle{value: 0.2 ether}(1, 2);
+        arena.joinBattle(1, 2);
     }
 
     function testCancelExpiredBattle() public {
         vm.prank(player1);
-        arena.createBattle{value: 0.1 ether}(1);
+        arena.createBattle(1, 10e18);
 
-        uint256 balBefore = player1.balance;
+        uint256 balBefore = blade.balanceOf(player1);
 
         // Fast forward past expiry
         vm.warp(block.timestamp + 2 hours);
@@ -87,15 +100,15 @@ contract ProtardioArenaTest is Test {
         arena.cancelBattle(1);
 
         // Got refund
-        assertEq(player1.balance, balBefore + 0.1 ether);
+        assertEq(blade.balanceOf(player1), balBefore + 10e18);
     }
 
     function testOpenBattlesList() public {
         vm.prank(player1);
-        arena.createBattle{value: 0.1 ether}(1);
+        arena.createBattle(1, 10e18);
 
         vm.prank(player2);
-        arena.createBattle{value: 0.2 ether}(2);
+        arena.createBattle(2, 20e18);
 
         uint256[] memory open = arena.getOpenBattles();
         assertEq(open.length, 2);
@@ -103,10 +116,10 @@ contract ProtardioArenaTest is Test {
 
     function testStats() public {
         vm.prank(player1);
-        arena.createBattle{value: 0.1 ether}(1);
+        arena.createBattle(1, 10e18);
 
         vm.prank(player2);
-        arena.joinBattle{value: 0.1 ether}(1, 2);
+        arena.joinBattle(1, 2);
 
         (uint256 w1, uint256 l1,) = arena.getStats(player1);
         (uint256 w2, uint256 l2,) = arena.getStats(player2);

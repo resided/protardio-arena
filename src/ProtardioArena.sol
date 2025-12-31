@@ -1,10 +1,14 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+
 /// @title ProtardioArena - Beyblade Battle Arena
-/// @notice LET IT RIP! Spin your Protardio Citizen and battle for ETH
+/// @notice LET IT RIP! Spin your Protardio Citizen and battle for $BLADE
 /// @dev Pure 50/50 chaos - no stats, just vibes
 contract ProtardioArena {
+    using SafeERC20 for IERC20;
 
     struct Battle {
         address player1;
@@ -19,9 +23,12 @@ contract ProtardioArena {
     // Base chain NFT contract (for reference)
     address public constant PROTARDIO_NFT = 0x5d38451841Ee7A2E824A88AFE47b00402157b08d;
 
+    // $BLADE token on Arbitrum
+    IERC20 public immutable BLADE;
+
     address public owner;
     uint256 public fee = 250; // 2.5%
-    uint256 public minStake = 0.001 ether;
+    uint256 public minStake = 1e18; // 1 BLADE minimum
     uint256 public battleExpiry = 1 hours;
 
     mapping(uint256 => Battle) public battles;
@@ -49,19 +56,23 @@ contract ProtardioArena {
     error NotExpired();
     error NotYourBattle();
 
-    constructor() {
+    constructor(address _blade) {
         owner = msg.sender;
+        BLADE = IERC20(_blade);
     }
 
-    /// @notice Create a battle - stake ETH and wait for a challenger
-    function createBattle(uint256 tokenId) external payable {
-        if (msg.value < minStake) revert InsufficientStake();
+    /// @notice Create a battle - stake BLADE and wait for a challenger
+    function createBattle(uint256 tokenId, uint256 stakeAmount) external {
+        if (stakeAmount < minStake) revert InsufficientStake();
+
+        // Transfer BLADE from player to contract
+        BLADE.safeTransferFrom(msg.sender, address(this), stakeAmount);
 
         battleCount++;
         battles[battleCount] = Battle({
             player1: msg.sender,
             player2: address(0),
-            stake: msg.value,
+            stake: stakeAmount,
             p1TokenId: tokenId,
             p2TokenId: 0,
             active: true,
@@ -70,16 +81,18 @@ contract ProtardioArena {
 
         openBattles.push(battleCount);
 
-        emit BattleCreated(battleCount, msg.sender, tokenId, msg.value);
+        emit BattleCreated(battleCount, msg.sender, tokenId, stakeAmount);
     }
 
     /// @notice Join a battle and LET IT RIP!
-    function joinBattle(uint256 battleId, uint256 tokenId) external payable {
+    function joinBattle(uint256 battleId, uint256 tokenId) external {
         Battle storage battle = battles[battleId];
 
         if (!battle.active) revert BattleNotActive();
         if (battle.player1 == msg.sender) revert CannotFightYourself();
-        if (msg.value != battle.stake) revert WrongStakeAmount();
+
+        // Transfer matching stake from player 2
+        BLADE.safeTransferFrom(msg.sender, address(this), battle.stake);
 
         battle.player2 = msg.sender;
         battle.p2TokenId = tokenId;
@@ -122,9 +135,8 @@ contract ProtardioArena {
         // Remove from open battles
         _removeOpenBattle(battleId);
 
-        // Pay winner
-        (bool success, ) = winner.call{value: prize}("");
-        require(success, "Transfer failed");
+        // Pay winner in BLADE
+        BLADE.safeTransfer(winner, prize);
 
         emit LetItRip(battleId, winner, loser, prize);
     }
@@ -140,8 +152,8 @@ contract ProtardioArena {
         battle.active = false;
         _removeOpenBattle(battleId);
 
-        (bool success, ) = battle.player1.call{value: battle.stake}("");
-        require(success, "Refund failed");
+        // Refund BLADE
+        BLADE.safeTransfer(battle.player1, battle.stake);
 
         emit BattleCancelled(battleId);
     }
@@ -196,9 +208,7 @@ contract ProtardioArena {
 
     function withdraw() external {
         require(msg.sender == owner);
-        (bool success, ) = owner.call{value: address(this).balance}("");
-        require(success);
+        uint256 balance = BLADE.balanceOf(address(this));
+        BLADE.safeTransfer(owner, balance);
     }
-
-    receive() external payable {}
 }

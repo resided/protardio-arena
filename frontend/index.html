@@ -502,6 +502,10 @@
             <!-- Stats Bar -->
             <div class="stats-bar">
                 <div class="stat">
+                    <div class="stat-value" id="bladeBalance">0</div>
+                    <div class="stat-label">$BLADE Balance</div>
+                </div>
+                <div class="stat">
                     <div class="stat-value" id="totalBattles">0</div>
                     <div class="stat-label">Total Battles</div>
                 </div>
@@ -515,7 +519,7 @@
                 </div>
                 <div class="stat">
                     <div class="stat-value" id="yourEarnings">0</div>
-                    <div class="stat-label">ETH Won</div>
+                    <div class="stat-label">$BLADE Won</div>
                 </div>
             </div>
 
@@ -528,7 +532,8 @@
                         <option value="">Loading your Protardios...</option>
                     </select>
                     <div id="selectedPreview" style="text-align: center; margin: 10px 0;"></div>
-                    <input type="number" id="stakeAmount" placeholder="Stake (ETH)" step="0.001" min="0.001">
+                    <label style="color: #888; font-size: 0.9rem;">Stake Amount ($BLADE)</label>
+                    <input type="number" id="stakeAmount" placeholder="1000000" value="1000000" step="1000" min="1">
                     <button class="rip-btn" onclick="createBattle()">LET IT RIP!</button>
                 </div>
 
@@ -553,7 +558,8 @@
 
     <script>
         // Contract config
-        const CONTRACT_ADDRESS = "0xB9a71Ef99c927fe239432f50A4a74fFe36Fb1d72";
+        const CONTRACT_ADDRESS = "0x35C2eA62095845AeC2fdC62e5dcF84264978C91E";
+        const BLADE_TOKEN = "0xDC9a64F4511ebe6F813BFDB68b34e6698a1C4b07";
         const ARBITRUM_CHAIN_ID = 42161;
         const IPFS_GATEWAY = "https://ipfs.io/ipfs/";
         const PROTARDIO_IMAGE_BASE = "bafybeiefdh5ryzudhw2y2qvhqbigxigmx4kqkrabqqlnsv3twiz6mphida";
@@ -569,9 +575,15 @@
             "event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)"
         ];
 
+        const BLADE_ABI = [
+            "function balanceOf(address) view returns (uint256)",
+            "function allowance(address owner, address spender) view returns (uint256)",
+            "function approve(address spender, uint256 amount) returns (bool)"
+        ];
+
         const ABI = [
-            "function createBattle(uint256 tokenId) payable",
-            "function joinBattle(uint256 battleId, uint256 tokenId) payable",
+            "function createBattle(uint256 tokenId, uint256 stakeAmount)",
+            "function joinBattle(uint256 battleId, uint256 tokenId)",
             "function cancelBattle(uint256 battleId)",
             "function getOpenBattles() view returns (uint256[])",
             "function getBattle(uint256) view returns (address player1, address player2, uint256 stake, uint256 p1TokenId, uint256 p2TokenId, bool active)",
@@ -583,6 +595,7 @@
 
         let provider, signer, contract, userAddress;
         let baseProvider, nftContract;
+        let bladeContract;
         let userProtardios = [];
 
         // Get Protardio image URL
@@ -705,6 +718,7 @@
                 }
 
                 contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, signer);
+                bladeContract = new ethers.Contract(BLADE_TOKEN, BLADE_ABI, signer);
 
                 document.getElementById('connectSection').classList.add('hidden');
                 document.getElementById('walletSection').classList.remove('hidden');
@@ -737,19 +751,39 @@
 
         async function loadStats() {
             try {
-                const [totalBattles, stats] = await Promise.all([
+                const [totalBattles, stats, bladeBalance] = await Promise.all([
                     contract.totalBattles(),
-                    contract.getStats(userAddress)
+                    contract.getStats(userAddress),
+                    bladeContract.balanceOf(userAddress)
                 ]);
 
                 document.getElementById('totalBattles').textContent = totalBattles.toString();
                 document.getElementById('yourWins').textContent = stats.wins.toString();
                 document.getElementById('yourLosses').textContent = stats.losses.toString();
                 document.getElementById('yourEarnings').textContent =
-                    parseFloat(ethers.formatEther(stats.earnings)).toFixed(3);
+                    formatBlade(stats.earnings);
+                document.getElementById('bladeBalance').textContent =
+                    formatBlade(bladeBalance);
             } catch (e) {
                 console.error('Stats error:', e);
             }
+        }
+
+        function formatBlade(amount) {
+            const num = parseFloat(ethers.formatEther(amount));
+            if (num >= 1000000) return (num / 1000000).toFixed(2) + 'M';
+            if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
+            return num.toFixed(0);
+        }
+
+        async function checkAndApprove(amount) {
+            const allowance = await bladeContract.allowance(userAddress, CONTRACT_ADDRESS);
+            if (allowance < amount) {
+                const tx = await bladeContract.approve(CONTRACT_ADDRESS, ethers.MaxUint256);
+                await tx.wait();
+                return true;
+            }
+            return false;
         }
 
         async function loadOpenBattles() {
@@ -774,7 +808,7 @@
                                 <div style="color: #0ff;">Protardio #${battle.p1TokenId}</div>
                                 <div style="font-size: 0.8rem; color: #888;">${battle.player1.slice(0,6)}...${battle.player1.slice(-4)}</div>
                             </div>
-                            <div class="battle-stake">${ethers.formatEther(battle.stake)} ETH</div>
+                            <div class="battle-stake">${formatBlade(battle.stake)} $BLADE</div>
                             ${isYours ?
                                 '<span style="color: #888;">Your Battle</span>' :
                                 `<button class="join-btn" onclick="joinBattle(${id}, '${battle.stake}', ${battle.p1TokenId})">FIGHT!</button>`
@@ -794,17 +828,21 @@
             const stake = document.getElementById('stakeAmount').value;
 
             if (!tokenId || !stake) {
-                alert('Enter your Token ID and stake amount!');
+                alert('Select your Protardio and enter stake amount!');
                 return;
             }
 
             try {
+                // Convert to wei (BLADE has 18 decimals)
+                const stakeWei = ethers.parseEther(stake);
+
+                // Check and approve BLADE if needed
+                await checkAndApprove(stakeWei);
+
                 // Update arena with your beyblade
                 document.getElementById('blade1Img').src = getProtardioImage(tokenId);
 
-                const tx = await contract.createBattle(tokenId, {
-                    value: ethers.parseEther(stake)
-                });
+                const tx = await contract.createBattle(tokenId, stakeWei);
                 await tx.wait();
 
                 await loadOpenBattles();
@@ -825,6 +863,9 @@
             }
 
             try {
+                // Check and approve BLADE if needed
+                await checkAndApprove(BigInt(stakeWei));
+
                 // Setup arena visuals
                 const blade1 = document.getElementById('blade1');
                 const blade2 = document.getElementById('blade2');
@@ -840,7 +881,7 @@
                 // Create sparks
                 createSparks();
 
-                const tx = await contract.joinBattle(battleId, tokenId, { value: stakeWei });
+                const tx = await contract.joinBattle(battleId, tokenId);
                 const receipt = await tx.wait();
 
                 // Find the LetItRip event
@@ -916,7 +957,7 @@
             if (won) {
                 resultText.textContent = 'VICTORY!';
                 resultText.className = 'result-text win';
-                prizeText.textContent = `You won ${parseFloat(prize).toFixed(4)} ETH!`;
+                prizeText.textContent = `You won ${formatBlade(ethers.parseEther(prize))} $BLADE!`;
             } else {
                 resultText.textContent = 'DEFEAT!';
                 resultText.className = 'result-text lose';
